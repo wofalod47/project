@@ -1,0 +1,67 @@
+timeout-minutes: 360
+
+steps:
+  - name: Show macOS information
+    run: |
+      echo "=== macOS ==="
+      sw_vers
+      echo
+      echo "=== Hardware ==="
+      system_profiler SPHardwareDataType
+      echo
+      echo "=== User ==="
+      whoami
+      echo
+      echo "=== IP addresses ==="
+      ifconfig
+
+  # Tailscale officially supports macOS GitHub runners.
+  # Recommended method is the Tailscale GitHub Action.
+  - name: Connect to Tailscale
+    uses: tailscale/github-action@v4
+    with:
+      oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+      audience: ${{ secrets.TS_AUDIENCE }}
+      tags: tag:ci
+
+  - name: Get Tailscale IP
+    run: |
+      TS_IP=$(tailscale ip -4)
+
+      echo "TAILSCALE_IP=$TS_IP" >> "$GITHUB_ENV"
+
+      echo
+      echo "======================================"
+      echo "Tailscale IP: $TS_IP"
+      echo "======================================"
+
+  - name: Check Tailscale status
+    run: |
+      tailscale status
+      tailscale ip -4
+
+  - name: Install useful software
+    run: |
+      brew --version
+      git --version
+      python3 --version
+      node --version
+
+  - name: Keep macOS runner alive
+    run: |
+      echo
+      echo "======================================"
+      echo "       macOS RUNNER IS ONLINE"
+      echo "======================================"
+      echo
+      echo "Tailscale IP: $TAILSCALE_IP"
+      echo
+      echo "The GitHub macOS VM will remain alive"
+      echo "while this workflow is running."
+      echo
+      echo "======================================"
+
+      while true; do
+        echo "[$(date)] macOS runner alive"
+        sleep 300
+      done
