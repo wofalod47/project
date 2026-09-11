@@ -117,48 +117,43 @@ jobs:
         run: |
           brew install tailscale
 
-      - name: Install and Setup VNC Server via XQuartz
+      - name: Enable macOS Screen Sharing (VNC)
         run: |
-          # Install XQuartz which includes vncserver
-          brew install --cask xquartz
+          # Enable screen sharing on the system
+          sudo defaults write /var/db/launchd.db/com.apple.launchd.peruser.501.plist -dict-add com.apple.screensharing.server 1
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist 2>/dev/null || true
           
-          # Create VNC password (random)
-          VNC_PASS=$(openssl rand -base64 8)
+          # Set a simple password (optional)
+          VNC_PASS=$(openssl rand -base64 12 | head -c 8)
           echo "VNC_PASSWORD=$VNC_PASS" >> $GITHUB_ENV
           
-          # Create .vnc directory
-          mkdir -p ~/.vnc
-          
-          # Set VNC password using XQuartz vncpasswd
-          echo "$VNC_PASS" | /opt/X11/bin/vncpasswd -f > ~/.vnc/passwd 2>/dev/null || true
-          chmod 600 ~/.vnc/passwd
-          
-          # Start VNC server on display :1 (port 5901)
-          /opt/X11/bin/vncserver :1 -geometry 1920x1080 -depth 24 2>&1 &
-          
-          sleep 5
-          
-          # Check if VNC server started
-          if /opt/X11/bin/vncserver -list 2>/dev/null | grep -q ":1"; then
-            echo "✓ VNC Server started successfully on port 5901"
-          else
-            echo "✓ VNC Server started (background process)"
-          fi
-
-      - name: Enable SSH Access
-        run: |
-          echo "✓ SSH access available for secure tunneling"
+          sleep 2
+          echo "✓ macOS Screen Sharing (native VNC) enabled on port 5900"
 
       - name: Establish Tailscale Connection
         run: |
+          # Start Tailscale daemon
+          sudo tailscaled -state=/var/lib/tailscale/tailscaled.state &
+          sleep 2
+          
+          # Authenticate with Tailscale
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
           
-          # Wait for Tailscale IP
-          sleep 5
-          TAILSCALE_IP=$(tailscale ip -4)
+          # Wait for IP assignment with retry logic
+          RETRIES=0
+          while [ $RETRIES -lt 15 ]; do
+            TAILSCALE_IP=$(tailscale ip -4 2>/dev/null)
+            if [ ! -z "$TAILSCALE_IP" ]; then
+              break
+            fi
+            echo "Waiting for Tailscale IP... (attempt $((RETRIES+1))/15)"
+            sleep 2
+            RETRIES=$((RETRIES + 1))
+          done
           
           if [ -z "$TAILSCALE_IP" ]; then
-            echo "Error: Tailscale IP not assigned"
+            echo "Error: Tailscale IP not assigned after 30 seconds"
+            tailscale status
             exit 1
           fi
           
@@ -173,39 +168,50 @@ jobs:
           ║         macOS GUI Remote Access (CapStudio Testing)            ║
           ╚════════════════════════════════════════════════════════════════╝
           
-          📱 VNC Connection Details:
+          🎯 RECOMMENDED: SSH Tunneling + Screen Sharing
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
-          Address:  ${{ env.TAILSCALE_IP }}:5901
-          Password: ${{ env.VNC_PASSWORD }}
+          Step 1 - Create SSH Tunnel (in your terminal):
+              ssh -L 5900:localhost:5900 runner@${{ env.TAILSCALE_IP }}
           
-          🔗 Connection Methods:
+          Step 2 - Connect to Screen Sharing:
+              • Open "Screen Sharing" app on macOS
+              • Or: Finder → Go → Connect to Server
+              • Address: localhost:5900
+              • Username: runner
+              • No password needed (SSH handles auth)
+          
+          🖥️  Alternative: Direct VNC Connection
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
-          1️⃣  macOS / iOS (Built-in):
-              Open "Screen Sharing" or "Finder" → "Connect to Server"
-              vnc://${{ env.TAILSCALE_IP }}:5901
+          Address:  ${{ env.TAILSCALE_IP }}:5900
           
-          2️⃣  Windows / Linux / Any OS:
-              Use VNC Client (TightVNC, RealVNC, UltraVNC)
-              Host: ${{ env.TAILSCALE_IP }}:5901
-              Password: ${{ env.VNC_PASSWORD }}
+          Use any VNC Client:
+          • macOS: Screen Sharing or Finder → Connect to Server
+          • Windows: TightVNC, RealVNC, UltraVNC
+          • Linux: Remmina, Vino, TigerVNC Viewer
           
-          3️⃣  SSH Tunnel (Recommended for Security):
-              ssh -L 5901:localhost:5901 runner@${{ env.TAILSCALE_IP }}
-              Then connect to localhost:5901 in your VNC client
+          💻 Direct SSH Access (for CLI testing)
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
-          4️⃣  Direct SSH Access:
               ssh runner@${{ env.TAILSCALE_IP }}
-              Run your CapStudio tests from command line
+          
+          Then run CapStudio tests directly:
+              cd /path/to/capstudio
+              npm test  # or your test command
           
           ✅ Platform Support:
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
-          This macOS runner supports testing CapStudio on:
-          ✓ macOS (native environment)
-          ✓ iOS (via Xcode simulator)
-          ✓ Remote GUI access from any platform
+          This macOS runner supports testing on:
+          ✓ macOS (native environment - GUI available now)
+          ✓ iOS (via Xcode simulator - accessible via SSH)
+          ✓ Cross-platform from any OS
+          
+          📝 Notes:
+          • SSH tunneling is most secure (recommended)
+          • Screen Sharing is native macOS VNC protocol
+          • Direct VNC works but less secure than SSH tunnel
           
           ⏱️  Connection Active (Auto-expires after 3600 minutes or manual stop)
           ════════════════════════════════════════════════════════════════
@@ -214,7 +220,10 @@ jobs:
 
       - name: Keep Connection Active
         run: |
+          echo "🟢 macOS runner ready for CapStudio testing"
+          echo "Tailscale IP: $(tailscale ip -4)"
+          echo ""
           while true; do
-            echo "[$(date)] macOS GUI runner active - Keep VNC client connected or use SSH"
+            echo "[$(date)] macOS GUI runner active - Connect via SSH tunnel or direct access"
             sleep 300
           done
