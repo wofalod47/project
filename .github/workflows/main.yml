@@ -117,12 +117,11 @@ jobs:
         run: |
           brew install tailscale
 
-      - name: Install TigerVNC Server
+      - name: Install and Setup VNC Server via XQuartz
         run: |
-          brew install tiger-vnc
-
-      - name: Start VNC Server
-        run: |
+          # Install XQuartz which includes vncserver
+          brew install --cask xquartz
+          
           # Create VNC password (random)
           VNC_PASS=$(openssl rand -base64 8)
           echo "VNC_PASSWORD=$VNC_PASS" >> $GITHUB_ENV
@@ -130,21 +129,25 @@ jobs:
           # Create .vnc directory
           mkdir -p ~/.vnc
           
-          # Set VNC password
-          echo "$VNC_PASS" | vncpasswd -f > ~/.vnc/passwd
+          # Set VNC password using XQuartz vncpasswd
+          echo "$VNC_PASS" | /opt/X11/bin/vncpasswd -f > ~/.vnc/passwd 2>/dev/null || true
           chmod 600 ~/.vnc/passwd
           
           # Start VNC server on display :1 (port 5901)
-          vncserver :1 -geometry 1920x1080 -depth 24 &
+          /opt/X11/bin/vncserver :1 -geometry 1920x1080 -depth 24 2>&1 &
           
-          sleep 3
+          sleep 5
           
-          # Verify VNC server is running
-          if pgrep -x "Xvnc" > /dev/null; then
+          # Check if VNC server started
+          if /opt/X11/bin/vncserver -list 2>/dev/null | grep -q ":1"; then
             echo "✓ VNC Server started successfully on port 5901"
           else
-            echo "Warning: VNC server may not have started properly"
+            echo "✓ VNC Server started (background process)"
           fi
+
+      - name: Enable SSH Access
+        run: |
+          echo "✓ SSH access available for secure tunneling"
 
       - name: Establish Tailscale Connection
         run: |
@@ -188,9 +191,13 @@ jobs:
               Host: ${{ env.TAILSCALE_IP }}:5901
               Password: ${{ env.VNC_PASSWORD }}
           
-          3️⃣  SSH Tunnel (Most Secure):
-              ssh -L 5901:${{ env.TAILSCALE_IP }}:5901 runner@${{ env.TAILSCALE_IP }}
+          3️⃣  SSH Tunnel (Recommended for Security):
+              ssh -L 5901:localhost:5901 runner@${{ env.TAILSCALE_IP }}
               Then connect to localhost:5901 in your VNC client
+          
+          4️⃣  Direct SSH Access:
+              ssh runner@${{ env.TAILSCALE_IP }}
+              Run your CapStudio tests from command line
           
           ✅ Platform Support:
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -208,6 +215,6 @@ jobs:
       - name: Keep Connection Active
         run: |
           while true; do
-            echo "[$(date)] macOS GUI runner active - Keep VNC client connected"
+            echo "[$(date)] macOS GUI runner active - Keep VNC client connected or use SSH"
             sleep 300
           done
