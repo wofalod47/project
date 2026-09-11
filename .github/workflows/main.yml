@@ -117,7 +117,11 @@ jobs:
         run: |
           brew install tailscale
 
-      - name: Install and Start VNC Server
+      - name: Install TigerVNC Server
+        run: |
+          brew install tiger-vnc
+
+      - name: Start VNC Server
         run: |
           # Create VNC password (random)
           VNC_PASS=$(openssl rand -base64 8)
@@ -126,18 +130,21 @@ jobs:
           # Create .vnc directory
           mkdir -p ~/.vnc
           
-          # Install TigerVNC server via Homebrew
-          brew install tigervnc-server
-          
           # Set VNC password
           echo "$VNC_PASS" | vncpasswd -f > ~/.vnc/passwd
           chmod 600 ~/.vnc/passwd
           
-          # Start VNC server on display :1 (port 5901) with native macOS resolution
-          vncserver :1 -geometry 1920x1080 -depth 24 -localhost no &
+          # Start VNC server on display :1 (port 5901)
+          vncserver :1 -geometry 1920x1080 -depth 24 &
           
           sleep 3
-          echo "VNC Server started on port 5901"
+          
+          # Verify VNC server is running
+          if pgrep -x "Xvnc" > /dev/null; then
+            echo "✓ VNC Server started successfully on port 5901"
+          else
+            echo "Warning: VNC server may not have started properly"
+          fi
 
       - name: Establish Tailscale Connection
         run: |
@@ -153,6 +160,7 @@ jobs:
           fi
           
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
+          echo "✓ Tailscale connected: $TAILSCALE_IP"
 
       - name: Display macOS GUI Access Info
         run: |
