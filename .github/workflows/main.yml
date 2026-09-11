@@ -1,67 +1,54 @@
-timeout-minutes: 360
+name: RDP/Remote Access
 
-steps:
-  - name: Show macOS information
-    run: |
-      echo "=== macOS ==="
-      sw_vers
-      echo
-      echo "=== Hardware ==="
-      system_profiler SPHardwareDataType
-      echo
-      echo "=== User ==="
-      whoami
-      echo
-      echo "=== IP addresses ==="
-      ifconfig
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: 'Operating System'
+        required: true
+        type: choice
+        options:
+          - windows
+          - macos
 
-  # Tailscale officially supports macOS GitHub runners.
-  # Recommended method is the Tailscale GitHub Action.
-  - name: Connect to Tailscale
-    uses: tailscale/github-action@v4
-    with:
-      oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-      audience: ${{ secrets.TS_AUDIENCE }}
-      tags: tag:ci
+jobs:
+  windows-rdp:
+    runs-on: windows-latest
+    if: github.event.inputs.os == 'windows'
+    timeout-minutes: 3600
+    steps:
+      # Your existing RDP steps here...
 
-  - name: Get Tailscale IP
-    run: |
-      TS_IP=$(tailscale ip -4)
+  macos-remote:
+    runs-on: macos-latest
+    if: github.event.inputs.os == 'macos'
+    timeout-minutes: 3600
+    steps:
+      - name: Install Tailscale
+        run: |
+          brew install tailscale
+          # Start Tailscale
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
 
-      echo "TAILSCALE_IP=$TS_IP" >> "$GITHUB_ENV"
+      - name: Enable Remote Access (VNC/SSH)
+        run: |
+          # Enable screen sharing (VNC) or just use SSH
+          sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.RemoteDesktop.plist 2>/dev/null || true
+          
+          # Get Tailscale IP
+          TAILSCALE_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
 
-      echo
-      echo "======================================"
-      echo "Tailscale IP: $TS_IP"
-      echo "======================================"
+      - name: Display Connection Info
+        run: |
+          echo "=== macOS Remote Access ==="
+          echo "SSH: ssh runner@${{ env.TAILSCALE_IP }}"
+          echo "VNC: vnc://${{ env.TAILSCALE_IP }}"
+          echo "=============================="
 
-  - name: Check Tailscale status
-    run: |
-      tailscale status
-      tailscale ip -4
-
-  - name: Install useful software
-    run: |
-      brew --version
-      git --version
-      python3 --version
-      node --version
-
-  - name: Keep macOS runner alive
-    run: |
-      echo
-      echo "======================================"
-      echo "       macOS RUNNER IS ONLINE"
-      echo "======================================"
-      echo
-      echo "Tailscale IP: $TAILSCALE_IP"
-      echo
-      echo "The GitHub macOS VM will remain alive"
-      echo "while this workflow is running."
-      echo
-      echo "======================================"
-
-      while true; do
-        echo "[$(date)] macOS runner alive"
-        sleep 300
-      done
+      - name: Keep Connection Active
+        run: |
+          while true; do
+            echo "[$(date)] macOS runner active - Use Ctrl+C to terminate"
+            sleep 300
+          done
