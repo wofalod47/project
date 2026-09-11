@@ -116,23 +116,92 @@ jobs:
       - name: Install Tailscale
         run: |
           brew install tailscale
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
 
-      - name: Enable Remote Access (VNC/SSH)
+      - name: Install VNC Server (noVNC + TigerVNC)
         run: |
+          brew install tigerVNC
+          brew install novnc
+
+      - name: Start VNC Server
+        run: |
+          # Create VNC password (random)
+          VNC_PASS=$(openssl rand -base64 8)
+          echo "VNC_PASSWORD=$VNC_PASS" >> $GITHUB_ENV
+          
+          # Start TigerVNC server on display :1 (port 5901)
+          mkdir -p ~/.vnc
+          echo "$VNC_PASS" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+          
+          # Start VNC server in background
+          vncserver :1 -geometry 1920x1080 -depth 24 &
+          sleep 2
+          
+          echo "VNC Server started on :1 (port 5901)"
+
+      - name: Establish Tailscale Connection
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${{ github.run_id }}
+          
+          # Wait for Tailscale IP
+          sleep 5
           TAILSCALE_IP=$(tailscale ip -4)
+          
+          if [ -z "$TAILSCALE_IP" ]; then
+            echo "Error: Tailscale IP not assigned"
+            exit 1
+          fi
+          
           echo "TAILSCALE_IP=$TAILSCALE_IP" >> $GITHUB_ENV
 
-      - name: Display Connection Info
+      - name: Display macOS GUI Access Info
         run: |
-          echo "=== macOS Remote Access ==="
-          echo "SSH: ssh runner@${{ env.TAILSCALE_IP }}"
-          echo "VNC: vnc://${{ env.TAILSCALE_IP }}"
-          echo "=============================="
+          cat << 'EOF'
+          
+          ╔════════════════════════════════════════════════════════════════╗
+          ║         macOS GUI Remote Access (CapStudio Testing)            ║
+          ╚════════════════════════════════════════════════════════════════╝
+          
+          📱 VNC Connection Details:
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          Address:  ${{ env.TAILSCALE_IP }}:5901
+          Password: ${{ env.VNC_PASSWORD }}
+          
+          🔗 Connection Methods:
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          1️⃣  macOS / iOS (Built-in):
+              Open "Screen Sharing" or "Finder" → "Connect to Server"
+              vnc://${{ env.TAILSCALE_IP }}:5901
+          
+          2️⃣  Windows / Linux / Any OS:
+              Use VNC Client (TightVNC, RealVNC, UltraVNC)
+              vnc://${{ env.TAILSCALE_IP }}:5901
+          
+          3️⃣  Web Browser (noVNC):
+              http://${{ env.TAILSCALE_IP }}:6080
+          
+          4️⃣  SSH Tunnel (Secure):
+              ssh -L 5901:${{ env.TAILSCALE_IP }}:5901 runner@${{ env.TAILSCALE_IP }}
+              Then connect to localhost:5901
+          
+          ✅ Platform Support:
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          This macOS runner supports testing CapStudio on:
+          ✓ macOS (native)
+          ✓ iOS (via simulator or testing framework)
+          ✓ Remote GUI access from any platform
+          
+          ⏱️  Connection Active (Auto-expires after 3600 minutes or manual stop)
+          ════════════════════════════════════════════════════════════════
+          
+          EOF
 
       - name: Keep Connection Active
         run: |
           while true; do
-            echo "[$(date)] macOS runner active - Use Ctrl+C to terminate"
+            echo "[$(date)] macOS GUI runner active - Keep browser/VNC client connected"
             sleep 300
           done
