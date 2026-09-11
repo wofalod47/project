@@ -248,5 +248,31 @@ jobs:
           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
           
           • SSH tunneling encrypts all traffic (recommended)
-          • Tailscale provides end-to-end encryption](#)
-
+          • Tailscale provides end-to-end encryption
+          • Screen Sharing over SSH tunnel is most secure
+          • Connection auto-expires after 3600 minutes (60 hours)
+          
+          ⏱️  Connection Status
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          ✓ Tailscale connected
+          ✓ SSH enabled
+          ✓ Screen Sharing active
+          
+          Runner is ready for testing!
+          ════════════════════════════════════════════════════════════════
+          
+          EOF
+
+      - name: Keep Connection Active
+        run: |
+          echo "🟢 macOS runner is READY for CapStudio testing"
+          echo "Tailscale IP: $(tailscale ip -4 2>/dev/null || echo 'connecting...')"
+          echo ""
+          echo "Connection will remain active until workflow is cancelled or times out"
+          echo ""
+          
+          while true; do
+            echo "[$(date)] macOS runner active - SSH: runner@$(tailscale ip -4 2>/dev/null) - Screen Sharing: Port 5900"
+            sleep 60
+          done
